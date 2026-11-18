@@ -1,4 +1,4 @@
-# The Cult
+# orchestrator
 
 A Windows-first desktop GUI for running several AI coding agents (Claude Code, Codex CLI, Gemini CLI, …) in parallel on git worktrees.
 

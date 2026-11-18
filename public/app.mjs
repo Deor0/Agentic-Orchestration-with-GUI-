@@ -5,9 +5,22 @@ const $ = id => document.getElementById(id);
 const boardEl = $('board'), titleEl = $('title'), statusEl = $('status');
 const termEl = $('term'), emptyEl = $('empty'), shellEl = $('shell');
 
-const BUCKET_LABEL = {
-  needsYou: 'needs you', failed: 'failed', working: 'working', done: 'done', idle: 'idle',
+// The whole theme lives here. Code identifiers stay literal on purpose: the
+// buckets are still needsYou/failed/working server-side, only the words change.
+// The whole theme lives here. Code identifiers stay literal on purpose: the
+// buckets are still needsYou/failed/working server-side, only the words change.
+// Each glyph has a distinct silhouette in pure greyscale, so state is never
+// carried by colour alone - that is the colour-vision fallback.
+const BUCKETS = {
+  needsYou: { label: 'bleating', glyph: '✦' },  // ✦ the one calling
+  failed:   { label: 'strayed',  glyph: '†' },  // † the obituary dagger
+  working:  { label: 'grazing',  glyph: '❧' },  // ❧ the leaf
+  // U+FE0E forces text presentation: without it Windows can render these two
+  // as colour emoji, which would break the monochrome glyph set.
+  done:     { label: 'gathered', glyph: '☉︎' },  // ☉ the whole circle
+  idle:     { label: 'resting',  glyph: '☽︎' },  // ☽ asleep
 };
+const NOUN = 'lamb';
 
 let current = null;      // pane id being viewed
 let paneSocket = null;
@@ -18,7 +31,10 @@ let latest = { buckets: {}, order: [] };
 const term = new Terminal({
   cursorBlink: true, fontSize: 13,
   fontFamily: 'ui-monospace, "Cascadia Code", Consolas, monospace',
-  theme: { background: '#0b0d10', foreground: '#c9d1d9' },
+  // Must match --bg exactly: an identical background is what makes the window
+  // read as one instrument rather than a widget parked beside a terminal.
+  // The 16 ANSI slots are deliberately left alone - red must stay red.
+  theme: { background: '#0e0d0b', foreground: '#e8e0cf' },
 });
 const fit = new FitAddon();
 term.loadAddon(fit);
@@ -62,7 +78,7 @@ function showEmpty() {
   paneSocket = null;
   termEl.style.display = 'none';
   emptyEl.style.display = '';
-  titleEl.textContent = 'no agent selected';
+  titleEl.textContent = `no ${NOUN} selected`;
   statusEl.textContent = '';
 }
 
@@ -73,34 +89,44 @@ const ago = ms => ms < 60000 ? `${Math.round(ms / 1000)}s` : `${Math.round(ms / 
 function render() {
   boardEl.textContent = '';
   if (!latest.order.length) {
-    boardEl.innerHTML = '<p style="color:#7d8590;padding:10px">no agents yet</p>';
+    boardEl.innerHTML = '<p class="empty-board">the pasture is empty</p>';
     return;
   }
 
   for (const [bucket, rows] of Object.entries(latest.buckets)) {
-    if (!rows?.length) continue;
+    if (!rows?.length) continue;            // empty buckets read as an admin table
+    const { label, glyph } = BUCKETS[bucket];
+
     const section = document.createElement('section');
-    section.className = `bucket ${bucket}`;
-    section.innerHTML = `<h2>${BUCKET_LABEL[bucket]} <span>${rows.length}</span></h2>`;
+    section.className = 'bucket';
+    section.dataset.bucket = label;         // CSS picks --accent off this
+    // label, then a rule out to the margin, then the count: the typography of
+    // an order of service, which carries more ritual than any ornament.
+    section.innerHTML = `<h2><span class="g">${glyph}</span>${label}<i></i><span class="n">${rows.length}</span></h2>`;
 
     for (const row of rows) {
-      const el = document.createElement('div');
       // `stale` is carried separately from `confidence`: a reported-working pane
       // that has gone quiet is still "reported", so both fields must be read.
-      el.className = `row ${bucket} ${row.confidence === 'inferred' || row.stale ? 'inferred' : ''}`
-        + (row.id === current ? ' active' : '');
+      const inferred = row.confidence === 'inferred' || row.stale;
+
+      const el = document.createElement('div');
+      el.className = `row${inferred ? ' inferred' : ''}${row.id === current ? ' active' : ''}`;
       el.onclick = () => open(row.id);
 
-      const meta = row.waitingMs != null ? ago(row.waitingMs)
-        : row.exitCode != null ? `exit ${row.exitCode}`
+      const value = row.waitingMs != null ? ago(row.waitingMs)
+        : row.exitCode != null ? `ex ${row.exitCode}`
         : row.stale ? 'quiet' : '';
+      // "~" marks an inferred value for anyone reading the text, not the dot
+      const meta = value && inferred ? `~${value}` : value;
 
       el.innerHTML = `<span class="dot"></span>
         <span class="name"></span>
         <span class="meta">${meta}</span>
-        <span class="close" title="close agent">×</span>`;
-      el.querySelector('.name').textContent = row.title;
-      el.querySelector('.close').onclick = e => { e.stopPropagation(); closePane(row.id); };
+        <span class="cull" title="cull">×</span>`;
+      const name = el.querySelector('.name');
+      name.textContent = row.title;
+      name.title = row.title;               // long branch names ellipsise
+      el.querySelector('.cull').onclick = e => { e.stopPropagation(); closePane(row.id); };
       section.append(el);
     }
     boardEl.append(section);
