@@ -151,3 +151,44 @@ test('deleting a pane kills it and removes it from the inbox', async () => {
   const gone = await until(() => { try { process.kill(pid, 0); return false; } catch { return true; } });
   assert.ok(gone, `shell pid ${pid} survived delete`);
 });
+
+// --- origin gating -----------------------------------------------------
+// Binding to localhost is not access control: WebSockets ignore same-origin,
+// so a hostile page could otherwise drive a shell as the user.
+
+const wsWithOrigin = origin => new Promise(resolve => {
+  const ws = new WebSocket(`${WS}/?fleet=1`, origin ? { headers: { origin } } : undefined);
+  ws.on('open', () => { ws.close(); resolve('open'); });
+  ws.on('error', () => resolve('rejected'));
+});
+
+test('a websocket from a hostile origin is rejected at the handshake', async () => {
+  assert.equal(await wsWithOrigin('https://evil.example'), 'rejected');
+});
+
+test('a websocket from our own page is accepted', async () => {
+  assert.equal(await wsWithOrigin(`http://127.0.0.1:${PORT}`), 'open');
+  assert.equal(await wsWithOrigin(`http://localhost:${PORT}`), 'open');
+});
+
+test('a websocket with no origin is accepted (non-browser client)', async () => {
+  assert.equal(await wsWithOrigin(null), 'open');
+});
+
+test('an api call from a hostile origin is refused', async () => {
+  // text/plain dodges the CORS preflight, so this is the shape an attacker uses.
+  const res = await fetch(`${BASE}/api/panes`, {
+    method: 'POST',
+    headers: { origin: 'https://evil.example', 'content-type': 'text/plain' },
+    body: '{"title":"pwned"}',
+  });
+  assert.equal(res.status, 403);
+
+  const { body } = await api('GET', '/api/inbox');
+  assert.ok(!body.order.some(r => r.title === 'pwned'), 'hostile origin created a pane');
+});
+
+test('reading the inbox from a hostile origin is refused', async () => {
+  const res = await fetch(`${BASE}/api/inbox`, { headers: { origin: 'https://evil.example' } });
+  assert.equal(res.status, 403);
+});

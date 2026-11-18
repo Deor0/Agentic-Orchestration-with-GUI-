@@ -12,6 +12,18 @@ const ROOT = new URL('..', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '
 
 const MIME = { '.html': 'text/html', '.mjs': 'text/javascript', '.js': 'text/javascript', '.css': 'text/css' };
 
+// Binding to 127.0.0.1 is NOT access control. WebSockets ignore the same-origin
+// policy entirely, so without this check any page you happen to be browsing
+// could open ws://127.0.0.1:PORT and type into your shells. Browsers always
+// send Origin on a WS handshake and on cross-origin fetch, so an absent Origin
+// means a non-browser client (curl, the tests) - which already has local code
+// execution and so gains nothing here.
+const ALLOWED_ORIGINS = new Set([`http://127.0.0.1:${PORT}`, `http://localhost:${PORT}`]);
+const originOk = req => {
+  const origin = req.headers.origin;
+  return origin === undefined || ALLOWED_ORIGINS.has(origin);
+};
+
 // Static files come from two fixed maps only; nothing else is reachable.
 const SERVE = {
   '/': 'public/index.html',
@@ -72,6 +84,9 @@ const readBody = req => new Promise(resolve => {
 const server = http.createServer(async (req, res) => {
   const path = new URL(req.url, 'http://x').pathname;
 
+  // Everything under /api can read pane ids or spawn shells. Gate the lot.
+  if (path.startsWith('/api/') && !originOk(req)) return json(res, 403, { error: 'bad origin' });
+
   if (req.method === 'GET' && SERVE[path]) return sendFile(res, join(ROOT, SERVE[path]));
   if (req.method === 'GET' && VENDOR[path]) return sendFile(res, join(ROOT, 'node_modules', normalize(VENDOR[path])));
   if (req.method === 'GET' && path === '/api/shells') {
@@ -97,7 +112,8 @@ const server = http.createServer(async (req, res) => {
   res.writeHead(404).end('not found');
 });
 
-const wss = new WebSocketServer({ server });
+// Reject at the handshake, so a hostile page never gets an open socket at all.
+const wss = new WebSocketServer({ server, verifyClient: ({ req }) => originOk(req) });
 
 wss.on('connection', (ws, req) => {
   const params = new URL(req.url, 'http://x').searchParams;
