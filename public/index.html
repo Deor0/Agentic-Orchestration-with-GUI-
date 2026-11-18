@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>orchestrator</title>
+<link rel="stylesheet" href="/vendor/xterm.css">
+<style>
+  :root { color-scheme: dark; }
+  body { margin: 0; background: #0b0d10; color: #c9d1d9;
+         font: 13px ui-monospace, "Cascadia Code", Consolas, monospace; }
+  header { display: flex; gap: 12px; align-items: center;
+           padding: 8px 12px; border-bottom: 1px solid #1f242c; }
+  #status { margin-left: auto; color: #7d8590; }
+  #term { height: calc(100vh - 38px); padding: 6px; }
+  button { background: #1f242c; color: #c9d1d9; border: 1px solid #30363d;
+           border-radius: 5px; padding: 4px 10px; cursor: pointer; font: inherit; }
+  button:hover { background: #2a313a; }
+</style>
+</head>
+<body>
+  <header>
+    <strong>orchestrator</strong>
+    <select id="shell"></select>
+    <button id="interrupt" title="sends \x03 through the PTY">Ctrl-C</button>
+    <span id="status">connecting…</span>
+  </header>
+  <div id="term"></div>
+  <script type="module" src="/app.mjs"></script>
+</body>
+</html>
