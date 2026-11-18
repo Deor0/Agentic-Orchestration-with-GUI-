@@ -54,10 +54,19 @@ test('runs a command and captures its output', async () => {
 
 test('interrupt() stops a running command and leaves the shell usable', async () => {
   await withPane(async pane => {
-    pane.write('Start-Sleep -Seconds 30\r');
-    await wait(900);
+    // Wait for proof the command is actually running before interrupting. A
+    // fixed sleep here flakes under load: the interrupt lands before the shell
+    // reaches Start-Sleep, hits nothing, and then the shell really does sleep.
+    pane.write('"RUNNING"; Start-Sleep -Seconds 30\r');
+    assert.ok(await until(pane, t => /RUNNING\r?\n/.test(t)), 'command never started');
+
+    // Then wait for the prompt to come back before typing again, or the next
+    // command is swallowed while the interrupted one is still unwinding.
+    const at = pane.buffer.length;
     pane.interrupt();
-    await wait(1000);
+    const backAtPrompt = await until(pane, () => /PS .*>/.test(pane.buffer.subarray(at).toString('utf8')));
+    assert.ok(backAtPrompt, 'shell never returned to a prompt after Ctrl-C');
+
     pane.write('"ALIVE"\r');
     assert.ok(await until(pane, t => t.includes('ALIVE')), 'shell did not survive Ctrl-C');
   });
