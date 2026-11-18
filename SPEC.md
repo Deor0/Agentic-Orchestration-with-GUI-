@@ -135,7 +135,7 @@ export function killTree(target)
 
 ---
 
-## 3. Agent state detection ✅ LANDED (parser) / 📋 PLANNED (rest)
+## 3. Agent state detection ✅ LANDED (OSC 7501 tier) / 📋 PLANNED (hook + scrape tiers)
 
 The core of the product: for each agent, is it *working*, *blocked on me*, *done*, or *stuck*.
 
@@ -193,7 +193,7 @@ Two invariants that must survive into tests later:
 
 ---
 
-## 4. The inbox 📋 PLANNED
+## 4. The inbox ✅ LANDED (toast click-focus needs a manual check)
 
 The screen that makes N agents tractable. Not the terminal layout — the queue.
 
