@@ -36,6 +36,7 @@ export class Pane {
     this.exit = null;
     this.size = { cols, rows };
     this.spawnedAt = Date.now();
+    this.lastOutputAt = null;   // drives the inbox's staleness heuristic
 
     // Agent state, highest-trust tier. Null until the agent reports anything;
     // the scraping tiers that fill the gap are not built yet.
@@ -60,6 +61,7 @@ export class Pane {
       // socket to utf8 on Windows (its `encoding` option is ignored there), so
       // chunk is already decoded; 'binary' flattened every char above U+00FF.
       const bytes = Buffer.from(chunk, 'utf8');
+      this.lastOutputAt = Date.now();
       this.#answerQueries(bytes);
       this.#readStatus(bytes);
       this.#reapplySize();

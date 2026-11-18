@@ -6,25 +6,76 @@
 <link rel="stylesheet" href="/vendor/xterm.css">
 <style>
   :root { color-scheme: dark; }
-  body { margin: 0; background: #0b0d10; color: #c9d1d9;
+  * { box-sizing: border-box; }
+  body { margin: 0; height: 100vh; display: grid; grid-template-columns: 320px 1fr;
+         background: #0b0d10; color: #c9d1d9;
          font: 13px ui-monospace, "Cascadia Code", Consolas, monospace; }
-  header { display: flex; gap: 12px; align-items: center;
-           padding: 8px 12px; border-bottom: 1px solid #1f242c; }
-  #status { margin-left: auto; color: #7d8590; }
-  #term { height: calc(100vh - 38px); padding: 6px; }
-  button { background: #1f242c; color: #c9d1d9; border: 1px solid #30363d;
-           border-radius: 5px; padding: 4px 10px; cursor: pointer; font: inherit; }
+
+  aside { border-right: 1px solid #1f242c; display: flex; flex-direction: column; min-height: 0; }
+  aside header { display: flex; gap: 8px; align-items: center; padding: 10px 12px;
+                 border-bottom: 1px solid #1f242c; }
+  aside header strong { flex: 1; }
+  #board { overflow-y: auto; flex: 1; padding: 6px; }
+
+  .bucket { margin-bottom: 10px; }
+  .bucket > h2 { font-size: 10px; letter-spacing: .09em; text-transform: uppercase;
+                 color: #7d8590; margin: 8px 6px 4px; display: flex; gap: 6px; }
+  .bucket.needsYou > h2 { color: #e3b341; }
+  .bucket.failed  > h2 { color: #f85149; }
+
+  .row { display: flex; gap: 8px; align-items: center; padding: 7px 8px; border-radius: 6px;
+         cursor: pointer; border: 1px solid transparent; }
+  .row:hover { background: #161b22; }
+  .row.active { background: #161b22; border-color: #30363d; }
+  .row .dot { width: 7px; height: 7px; border-radius: 50%; background: #7d8590; flex: none; }
+  .needsYou .dot { background: #e3b341; }
+  .failed   .dot { background: #f85149; }
+  .working  .dot { background: #3fb950; }
+  .done     .dot { background: #58a6ff; }
+  .row .name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .row .meta { color: #7d8590; font-size: 11px; flex: none; }
+  /* An inferred state must not look as certain as a reported one. */
+  .row.inferred .name { opacity: .62; font-style: italic; }
+  .row .close { opacity: 0; color: #7d8590; padding: 0 2px; }
+  .row:hover .close { opacity: 1; }
+
+  main { display: flex; flex-direction: column; min-width: 0; }
+  main header { display: flex; gap: 10px; align-items: center; padding: 8px 12px;
+                border-bottom: 1px solid #1f242c; }
+  #title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #term { flex: 1; padding: 6px; min-height: 0; }
+  #empty { margin: auto; color: #7d8590; text-align: center; line-height: 1.8; }
+
+  button, select { background: #1f242c; color: #c9d1d9; border: 1px solid #30363d;
+                   border-radius: 5px; padding: 4px 9px; cursor: pointer; font: inherit; }
   button:hover { background: #2a313a; }
+  kbd { background: #1f242c; border: 1px solid #30363d; border-bottom-width: 2px;
+        border-radius: 4px; padding: 1px 5px; font-size: 11px; }
 </style>
 </head>
 <body>
-  <header>
-    <strong>orchestrator</strong>
-    <select id="shell"></select>
-    <button id="interrupt" title="sends \x03 through the PTY">Ctrl-C</button>
-    <span id="status">connecting…</span>
-  </header>
-  <div id="term"></div>
+  <aside>
+    <header>
+      <strong>agents</strong>
+      <select id="shell" title="shell for new agents"></select>
+      <button id="new" title="new agent">+</button>
+    </header>
+    <div id="board"></div>
+  </aside>
+
+  <main>
+    <header>
+      <span id="title">no agent selected</span>
+      <span id="status"></span>
+      <button id="interrupt" title="send Ctrl-C">Ctrl-C</button>
+    </header>
+    <div id="term"></div>
+    <div id="empty">
+      no agent running<br>
+      press <kbd>+</kbd> to start one &nbsp;·&nbsp; <kbd>Ctrl</kbd>+<kbd>J</kbd> jumps to whoever waited longest
+    </div>
+  </main>
+
   <script type="module" src="/app.mjs"></script>
 </body>
 </html>
