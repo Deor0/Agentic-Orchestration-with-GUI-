@@ -2,77 +2,196 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>orchestrator</title>
+<title>the cult</title>
 <link rel="stylesheet" href="/vendor/xterm.css">
 <style>
-  :root { color-scheme: dark; }
-  * { box-sizing: border-box; }
-  body { margin: 0; height: 100vh; display: grid; grid-template-columns: 320px 1fr;
-         background: #0b0d10; color: #c9d1d9;
-         font: 13px ui-monospace, "Cascadia Code", Consolas, monospace; }
+:root {
+  color-scheme: dark;                /* dark native scrollbars and <select> popup */
 
-  aside { border-right: 1px solid #1f242c; display: flex; flex-direction: column; min-height: 0; }
-  aside header { display: flex; gap: 8px; align-items: center; padding: 10px 12px;
-                 border-bottom: 1px solid #1f242c; }
-  aside header strong { flex: 1; }
-  #board { overflow-y: auto; flex: 1; padding: 6px; }
+  /* surfaces: warm near-black. The blue-black is what made this read as a
+     generic dev dashboard; everything else here is secondary to that. */
+  --bg:          #0e0d0b;
+  --bg-raised:   #15130f;
+  --bg-hover:    #1d1a14;
 
-  .bucket { margin-bottom: 10px; }
-  .bucket > h2 { font-size: 10px; letter-spacing: .09em; text-transform: uppercase;
-                 color: #7d8590; margin: 8px 6px 4px; display: flex; gap: 6px; }
-  .bucket.needsYou > h2 { color: #e3b341; }
-  .bucket.failed  > h2 { color: #f85149; }
+  --fg:          #e8e0cf;            /* 14.8:1 */
+  --fg-dim:      #a9a08c;            /*  7.5:1 */
+  --fg-faint:    #6f6859;            /*  3.5:1 - disabled only */
 
-  .row { display: flex; gap: 8px; align-items: center; padding: 7px 8px; border-radius: 6px;
-         cursor: pointer; border: 1px solid transparent; }
-  .row:hover { background: #161b22; }
-  .row.active { background: #161b22; border-color: #30363d; }
-  .row .dot { width: 7px; height: 7px; border-radius: 50%; background: #7d8590; flex: none; }
-  .needsYou .dot { background: #e3b341; }
-  .failed   .dot { background: #f85149; }
-  .working  .dot { background: #3fb950; }
-  .done     .dot { background: #58a6ff; }
-  .row .name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .row .meta { color: #7d8590; font-size: 11px; flex: none; }
-  /* An inferred state must not look as certain as a reported one. */
-  .row.inferred .name { opacity: .62; font-style: italic; }
-  .row .close { opacity: 0; color: #7d8590; padding: 0 2px; }
-  .row:hover .close { opacity: 1; }
+  --line:        #272219;
+  --line-strong: #3a3225;
 
-  main { display: flex; flex-direction: column; min-width: 0; }
-  main header { display: flex; gap: 10px; align-items: center; padding: 8px 12px;
-                border-bottom: 1px solid #1f242c; }
-  #title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  #term { flex: 1; padding: 6px; min-height: 0; }
-  #empty { margin: auto; color: #7d8590; text-align: center; line-height: 1.8; }
+  /* accents colour dots, glyphs and counts only - never body text */
+  --bleating: #f2b544;
+  --gathered: #9fb6d6;
+  --strayed:  #e0756b;
+  --grazing:  #5f9284;
+  --resting:  #6b6456;
 
-  button, select { background: #1f242c; color: #c9d1d9; border: 1px solid #30363d;
-                   border-radius: 5px; padding: 4px 9px; cursor: pointer; font: inherit; }
-  button:hover { background: #2a313a; }
-  kbd { background: #1f242c; border: 1px solid #30363d; border-bottom-width: 2px;
-        border-radius: 4px; padding: 1px 5px; font-size: 11px; }
+  --font-ritual: "Sitka Banner", Constantia, Georgia, serif;
+  --font-mono:   "Cascadia Mono", Consolas, ui-monospace, monospace;
+  --font-ui:     "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  --font-glyph:  "Segoe UI Symbol", "Segoe UI", serif;
+
+  --row-h: 28px;
+  --pad: 12px;
+  --radius: 3px;
+  --focus: var(--bleating);
+
+  --grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.8' numOctaves='3'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  --caret: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%23a9a08c' stroke-width='1.3'/%3E%3C/svg%3E");
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0; height: 100vh; display: grid; grid-template-columns: 320px 1fr;
+  background: var(--bg); color: var(--fg);
+  font: 13px/1.45 var(--font-mono);
+}
+
+/* ---------- sidebar ---------- */
+
+aside {
+  display: flex; flex-direction: column; min-height: 0; position: relative;
+  border-right: 1px solid var(--line);
+  /* light falling from a high window. The terminal pane stays flat: a gradient
+     under terminal text degrades subpixel rendering. */
+  background: radial-gradient(130% 90% at 50% 0%, #17150f 0%, var(--bg) 62%);
+}
+/* 2.5% grain, sidebar only */
+aside::after {
+  content: ""; position: absolute; inset: 0; pointer-events: none;
+  background-image: var(--grain); opacity: .025; mix-blend-mode: overlay;
+}
+
+.sigil { padding: 16px var(--pad) 12px; border-bottom: 1px solid var(--line-strong); }
+.rule-row { display: flex; align-items: center; gap: 8px; margin-bottom: 7px; }
+.rule-row i { flex: 1; height: 1px; background: var(--line-strong); }
+.rule-row b { font: 11px var(--font-glyph); color: var(--bleating); font-weight: 400; }
+h1 {
+  margin: 0; text-align: center;
+  font: 600 20px var(--font-ritual);
+  letter-spacing: .34em; margin-right: -.34em;   /* optical centring */
+  text-transform: uppercase; color: var(--fg);
+}
+
+.controls { display: grid; grid-template-columns: 1fr auto; gap: 8px; padding: 10px var(--pad); }
+
+#board { overflow-y: auto; flex: 1; padding: 4px 0 12px; position: relative; }
+
+/* ---------- buckets ---------- */
+
+.bucket { margin-bottom: 4px; padding: 0 6px; }
+.bucket[data-bucket="bleating"] { --accent: var(--bleating); }
+.bucket[data-bucket="strayed"]  { --accent: var(--strayed);  }
+.bucket[data-bucket="grazing"]  { --accent: var(--grazing);  }
+.bucket[data-bucket="gathered"] { --accent: var(--gathered); }
+.bucket[data-bucket="resting"]  { --accent: var(--resting);  }
+
+/* the one that wants you: its own panel and a rule down the margin */
+.bucket[data-bucket="bleating"] {
+  background: var(--bg-raised);
+  border-left: 2px solid var(--bleating);
+  padding: 2px 6px 6px; margin: 0 0 10px;
+}
+
+.bucket > h2 {
+  display: flex; align-items: center; gap: 8px; margin: 10px 6px 5px;
+  font: 600 12px var(--font-ritual); text-transform: uppercase;
+  letter-spacing: .2em; color: var(--fg-dim);
+}
+.bucket > h2 .g { font-family: var(--font-glyph); color: var(--accent); letter-spacing: 0; }
+.bucket > h2 i  { flex: 1; height: 1px; background: var(--line); }
+.bucket > h2 .n { font: 12px var(--font-mono); color: var(--fg-faint); letter-spacing: 0; }
+
+/* ---------- rows ---------- */
+
+.row {
+  display: flex; align-items: center; gap: 8px;
+  height: var(--row-h); padding: 0 8px; border-radius: var(--radius);
+  cursor: pointer; border: 1px solid transparent;
+}
+.row:hover { background: var(--bg-hover); }
+.row.active { background: var(--bg-hover); border-color: var(--line-strong); }
+
+.dot { width: 8px; height: 8px; border-radius: 50%; flex: none; background: var(--accent); }
+/* hollow = we inferred this, we were not told it */
+.row.inferred .dot { background: transparent; box-shadow: inset 0 0 0 1.5px var(--accent); }
+.row.inferred .name { color: var(--fg-dim); font-style: italic; }
+
+.name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.meta { flex: none; font-size: 12px; color: var(--fg-dim); font-variant-numeric: tabular-nums; }
+/* reserved, never display:none - otherwise the board twitches on every hover */
+.cull { flex: none; width: 20px; text-align: center; color: var(--fg-faint);
+        opacity: 0; transition: opacity .12s; }
+.row:hover .cull { opacity: 1; }
+.cull:hover { color: var(--strayed); }
+
+.empty-board { color: var(--fg-faint); padding: 14px; font-style: italic; }
+
+/* ---------- terminal side ---------- */
+
+main { display: flex; flex-direction: column; min-width: 0; background: var(--bg); }
+main header {
+  display: flex; gap: 10px; align-items: center;
+  padding: 9px var(--pad); border-bottom: 1px solid var(--line);
+}
+#title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+         font-size: 12px; letter-spacing: .12em; text-transform: uppercase; color: var(--fg-dim); }
+#status { font-size: 12px; color: var(--fg-faint); }
+#term { flex: 1; padding: 8px 10px; min-height: 0; }
+#empty { margin: auto; text-align: center; color: var(--fg-dim); line-height: 2;
+         font-family: var(--font-ritual); font-size: 15px; }
+
+/* ---------- controls ---------- */
+
+button, select {
+  background: var(--bg-raised); color: var(--fg); border: 1px solid var(--line-strong);
+  border-radius: var(--radius); padding: 5px 9px; cursor: pointer;
+  font: var(--fs-ui, 13px) var(--font-ui);
+}
+select {
+  min-width: 0;                              /* the select shrinks, never the title */
+  appearance: none; padding-right: 24px;
+  background-image: var(--caret);
+  background-repeat: no-repeat; background-position: right 8px center; background-size: 10px 6px;
+}
+button:hover, select:hover { background: var(--bg-hover); border-color: var(--fg-faint); }
+:focus-visible { outline: 1px solid var(--focus); outline-offset: 2px; }
+
+kbd { background: var(--bg-raised); border: 1px solid var(--line-strong); border-bottom-width: 2px;
+      border-radius: var(--radius); padding: 1px 5px; font: 11px var(--font-mono); }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .001ms !important; transition-duration: .001ms !important; }
+}
 </style>
 </head>
 <body>
   <aside>
-    <header>
-      <strong>agents</strong>
-      <select id="shell" title="shell for new agents"></select>
-      <button id="new" title="new agent">+</button>
-    </header>
+    <div class="sigil">
+      <div class="rule-row"><i></i><b>&#10022;</b><i></i></div>
+      <h1>the cult</h1>
+    </div>
+    <div class="controls">
+      <select id="shell" title="shell for new lambs"></select>
+      <button id="new" title="raise a lamb">+</button>
+    </div>
     <div id="board"></div>
   </aside>
 
   <main>
     <header>
-      <span id="title">no agent selected</span>
+      <span id="title">no lamb selected</span>
       <span id="status"></span>
       <button id="interrupt" title="send Ctrl-C">Ctrl-C</button>
     </header>
     <div id="term"></div>
     <div id="empty">
-      no agent running<br>
-      press <kbd>+</kbd> to start one &nbsp;·&nbsp; <kbd>Ctrl</kbd>+<kbd>J</kbd> jumps to whoever waited longest
+      the pasture is empty<br>
+      <span style="font-size:13px">press <kbd>+</kbd> to raise a lamb &nbsp;·&nbsp;
+      <kbd>Ctrl</kbd>+<kbd>J</kbd> tends the longest-waiting</span>
     </div>
   </main>
 

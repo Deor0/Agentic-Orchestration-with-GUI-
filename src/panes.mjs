@@ -17,7 +17,8 @@ export class PaneRegistry {
 
   create({ shellId, cwd, title, cols, rows } = {}) {
     const pane = new Pane({ shellId, cwd, cols, rows });
-    pane.title = title ?? `${pane.shellId} — ${pane.cwd.split(/[\\/]/).pop()}`;
+    // Display string, not an identifier - the themed UI reads rows as "Lamb · x".
+    pane.title = title ?? `Lamb · ${pane.cwd.split(/[\\/]/).pop()}`;
     this.panes.set(pane.id, pane);
 
     // Any state change is worth telling the UI about: these are exactly the

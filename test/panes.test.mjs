@@ -32,7 +32,7 @@ test('a created pane is tracked and describable', async () => {
 test('a default title is derived when none is given', async () => {
   await withRegistry(async reg => {
     const pane = reg.create();
-    assert.match(pane.title, /—/);
+    assert.match(pane.title, /^Lamb · .+/);
   });
 });
 
