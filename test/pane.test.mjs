@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { Pane } from '../src/pane.mjs';
+import { Pane, cleanEnv } from '../src/pane.mjs';
 import { defaultShellId, resolveShell } from '../src/shell.mjs';
 
 const wait = ms => new Promise(r => setTimeout(r, ms));
@@ -127,4 +127,52 @@ test('exit code propagates', async () => {
   pane.dispose();
   assert.ok(e, 'pane never reported exit');
   assert.equal(e.exitCode, 7);
+});
+
+// --- environment hygiene ----------------------------------------------
+// If the orchestrator runs inside a Claude Code session, its control vars
+// would otherwise make an agent in a pane act as a nested child session.
+
+test('cleanEnv strips session-control vars but keeps real auth and PATH', () => {
+  const out = cleanEnv({
+    CLAUDECODE: '1',
+    CLAUDE_CODE_SESSION_ID: 'abc',
+    CLAUDE_CODE_MESSAGING_TOKEN: 'secret',
+    CLAUDE_CODE_ENTRYPOINT: 'cli',
+    CLAUDE_PID: '123',
+    CLAUDE_EFFORT: 'high',
+    AI_AGENT: '1',
+    ANTHROPIC_API_KEY: 'keep-me',
+    PATH: 'C:/Windows',
+    HOME: 'C:/Users/x',
+  });
+
+  for (const gone of ['CLAUDECODE', 'CLAUDE_CODE_SESSION_ID', 'CLAUDE_CODE_MESSAGING_TOKEN',
+                      'CLAUDE_CODE_ENTRYPOINT', 'CLAUDE_PID', 'CLAUDE_EFFORT', 'AI_AGENT']) {
+    assert.ok(!(gone in out), `${gone} leaked into the pane environment`);
+  }
+  assert.equal(out.ANTHROPIC_API_KEY, 'keep-me', 'stripped the user real auth');
+  assert.equal(out.PATH, 'C:/Windows');
+  assert.equal(out.HOME, 'C:/Users/x');
+});
+
+test('cleanEnv does not mutate the environment it is given', () => {
+  const src = { CLAUDECODE: '1', PATH: 'p' };
+  cleanEnv(src);
+  assert.equal(src.CLAUDECODE, '1');
+});
+
+test('a real pane does not inherit a parent Claude Code session', async () => {
+  process.env.CLAUDE_CODE_SESSION_ID = 'parent-session-should-not-leak';
+  process.env.CLAUDECODE = '1';
+  try {
+    await withPane(async pane => {
+      pane.write('"SID=[$env:CLAUDE_CODE_SESSION_ID] CC=[$env:CLAUDECODE]"\r');
+      assert.ok(await until(pane, t => t.includes('SID=[] CC=[]')),
+        'pane inherited the parent session control vars');
+    });
+  } finally {
+    delete process.env.CLAUDE_CODE_SESSION_ID;
+    delete process.env.CLAUDECODE;
+  }
 });

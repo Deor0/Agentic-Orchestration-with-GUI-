@@ -18,6 +18,18 @@ const QUERY_REPLIES = [
 // authoritative, so these are dropped to avoid answering twice.
 const CLIENT_AUTOREPLY = new Set(QUERY_REPLIES.map(r => r.a));
 
+// A pane must start a *fresh* agent session. If the orchestrator is itself
+// launched from inside Claude Code, process.env carries that session's control
+// variables - session id, messaging socket, messaging token - and a `claude`
+// started in a pane would inherit them and act as a nested child of someone
+// else's session. ANTHROPIC_* is deliberately kept: that is the user's real
+// auth, and an agent is supposed to have it.
+const SESSION_VARS = /^(CLAUDECODE|CLAUDE_CODE_.*|CLAUDE_PID|CLAUDE_EFFORT|AI_AGENT)$/;
+
+export function cleanEnv(env = process.env) {
+  return Object.fromEntries(Object.entries(env).filter(([k]) => !SESSION_VARS.test(k)));
+}
+
 const WARMUP_MS = 5000;            // window in which ConPTY may still drop a resize
 const MAX_SCROLLBACK = 2 * 1024 * 1024; // bytes; drop-with-marker beyond this
 
@@ -47,7 +59,7 @@ export class Pane {
     this.pty = pty.spawn(file, SHELLS[shellId].args, {
       name: 'xterm-256color',
       cols, rows, cwd,
-      env: process.env,
+      env: cleanEnv(),
       useConptyDll: true,
     });
 
