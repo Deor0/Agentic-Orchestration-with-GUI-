@@ -1,0 +1,156 @@
+warning: in the working copy of 'tracked.txt', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'tracked.txt', LF will be replaced by CRLF the next time Git touches it
+✔ isRepo: true inside a work tree, false outside, false for a missing path (858.0337ms)
+✔ sanitizeSlug: illegal characters, reserved device names, trailing dot/space (1.7749ms)
+warning: in the working copy of 'tracked.txt', LF will be replaced by CRLF the next time Git touches it
+✔ createPen: short root, cult/ branch off HEAD, tracked files present (1716.946ms)
+warning: in the working copy of 'tracked.txt', LF will be replaced by CRLF the next time Git touches it
+✔ createPen: a reserved name and illegal characters still produce a pen (2076.8645ms)
+warning: in the working copy of 'tracked.txt', LF will be replaced by CRLF the next time Git touches it
+✔ createPen: an existing branch name, and an existing directory, both get out of the way (1561.5525ms)
+✔ createPen: detached HEAD still branches from the current commit (1731.9015ms)
+✔ createPen: a repo with no commits fails with an actionable message, it does not hang (325.6719ms)
+warning: in the working copy of 'tracked.txt', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.gitmodules', LF will be replaced by CRLF the next time Git touches it
+✔ createPen: a path that is not a repo fails fast (123.9416ms)
+warning: in the working copy of 'tracked.txt', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'tracked.txt', LF will be replaced by CRLF the next time Git touches it
+✔ createPen: a submodule repo is refused, not half-built (1144.0315ms)
+warning: in the working copy of 'tracked.txt', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'tracked.txt', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.gitignore', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.worktreeinclude', LF will be replaced by CRLF the next time Git touches it
+✔ createPen: warns when two tracked paths differ only in case (2028.2172ms)
+warning: in the working copy of 'tracked.txt', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'tracked.txt', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/ffffffffffffffffffffffffffffffffffffffff.txt', LF will be replaced by CRLF the next time Git touches it
+Preparing worktree (new branch 'nolp')
+fatal: cannot create directory at 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa': Filename too long
+✔ .worktreeinclude copies the listed gitignored paths and nothing else (2009.7807ms)
+warning: in the working copy of 'tracked.txt', LF will be replaced by CRLF the next time Git touches it
+✔ core.longpaths: worktree add fails without the flag and succeeds with it (2211.3263ms)
+warning: in the working copy of 'tracked.txt', LF will be replaced by CRLF the next time Git touches it
+✔ removePen renames the pen aside, prunes, then deletes in the background (1532.1491ms)
+warning: in the working copy of 'tracked.txt', LF will be replaced by CRLF the next time Git touches it
+✔ removePen works while a live process holds the pen as its CWD (2216.6061ms)
+warning: in the working copy of 'tracked.txt', LF will be replaced by CRLF the next time Git touches it
+✔ removePen: stopWatchers runs first, and a throwing watcher cannot strand the pen (1432.9771ms)
+warning: in the working copy of 'tracked.txt', LF will be replaced by CRLF the next time Git touches it
+✔ sweep finds a stranded directory, reports it, and deletes nothing (3253.734ms)
+warning: in the working copy of 'tracked.txt', LF will be replaced by CRLF the next time Git touches it
+✔ concurrent createPen calls on one repo do not corrupt .git (4563.1992ms)
+warning: in the working copy of 'tracked.txt', LF will be replaced by CRLF the next time Git touches it
+✔ concurrent createPen with one slug hands out distinct pens (6089.9526ms)
+✔ gate: 20 create/remove cycles with a live CWD holder leave nothing stranded (23838.0836ms)
+✔ empty input gives empty buckets, order and counts (3.059ms)
+✔ each reported status lands in its bucket (1.1738ms)
+✔ bare blocked with no kind is still needsYou (0.2842ms)
+✔ needsYou is longest-waiting first and order[0] is the hotkey target (0.3429ms)
+✔ ties in waitingMs keep input order (0.3658ms)
+✔ order follows bucket priority: needsYou, failed, working, done, idle (0.3272ms)
+✔ exit code outranks status: non-zero fails, zero is done (0.3061ms)
+✔ never-reported pane with recent output is working, marked inferred (0.2676ms)
+✔ a quiet pane is stale and never needsYou, however long it has been quiet (0.4377ms)
+✔ a pane that never produced output is stale, not needsYou (0.345ms)
+✔ staleMs is an option (0.2964ms)
+✔ confidence is reported for agent-reported states and real exits (1.4723ms)
+✔ waitingMs is present only on blocked rows and is computed from the injected now (0.5026ms)
+✔ blocked with statusAt null produces no NaN anywhere (0.2825ms)
+✔ a statusAt in the future clamps to 0 rather than going negative (0.1969ms)
+✔ rows carry what a row needs to render (0.432ms)
+✔ counts match the buckets (0.4373ms)
+✔ deterministic: same input and same now give identical output (0.4894ms)
+✔ summarize does not mutate its input (0.307ms)
+✔ a reported done is idle, not done: the lamb is alive and awaiting you (0.2103ms)
+✔ an exited pane drops its stale status string (0.1939ms)
+✔ detail survives onto the row so the UI can show what was asked (0.2102ms)
+✔ panes are supervised by a real job object, not the leaky fallback (1.1977ms)
+✔ a pane picks up an agent status reported over OSC 7501 (2261.8848ms)
+✔ a reported done status replaces the earlier blocked one (2472.2944ms)
+✔ dispose kills the shell (1830.0453ms)
+✔ job objects are actually in use, not the taskkill fallback (1.3974ms)
+✔ killTree kills a grandchild whose parent already exited (2336.9322ms)
+✔ a PTY shell gets into the job before it can spawn anything (2550.2306ms)
+✔ taskkill /T leaks the same orphaned grandchild (3827.7416ms)
+✔ the public surface loads on any platform (1.8013ms)
+✔ the shared notifier never throws and rejects unroutable input (0.5183ms)
+✔ with no transport every notify is a silent no-op (36.4506ms)
+✔ a toast without a routable pane id is dropped (47.7721ms)
+✔ a lone block keeps the caller title and body (45.0554ms)
+✔ a wave of blocked agents produces one toast, not a wall (44.9884ms)
+✔ repeat notifications for one pane collapse to its latest text (45.1363ms)
+✔ the minimum gap delays a later toast instead of dropping it (249.5849ms)
+✔ clicking a toast routes back to its pane id (46.6995ms)
+✔ a button click routes; a timeout, dismissal or error does not (278.8634ms)
+✔ a coalesced toast routes to the longest-waiting pane (44.3493ms)
+✔ long text is truncated, and a truncated request carries no buttons (47.5123ms)
+✔ control characters and leading dashes are stripped from argv text (46.2503ms)
+✔ an empty title falls back rather than showing a blank toast (46.1601ms)
+✔ a throwing listener does not stop the others (47.0783ms)
+✔ onActivate returns a working unsubscribe and tolerates non-functions (45.9169ms)
+✔ a transport that throws does not escape onto the timer (91.4746ms)
+✔ parses a whole report in one chunk (3.1531ms)
+✔ every documented state maps to the normalized enum (0.7093ms)
+✔ clear is an action, not a status (0.382ms)
+✔ BEL terminates as well as ST (0.2155ms)
+✔ split across two, three and many chunks (3.721ms)
+✔ split inside the 7501 digits and inside base64 (0.3713ms)
+✔ ordinary output and unrelated escape sequences are ignored (0.2979ms)
+✔ a lone trailing ESC of an unrelated sequence does not swallow the next report (0.3189ms)
+✔ truncated report does not hang the parser or corrupt the next one (0.4194ms)
+✔ an oversize sequence is dropped and parsing recovers (1.6745ms)
+✔ malformed fields follow the spec rules (0.5698ms)
+✔ progress only counts for working and blocked, last key wins (0.3091ms)
+✔ capability probe round trip (0.4366ms)
+✔ utf8 bytes in surrounding output and in msg survive (0.5587ms)
+✔ several reports in one chunk, and whitespace around pairs (0.3851ms)
+✔ a shell is installed and resolves to an absolute path (2.4453ms)
+✔ bare shell names are rejected (0.7524ms)
+✔ answers the DA1 query so the shell actually starts (1836.873ms)
+✔ runs a command and captures its output (2032.0097ms)
+✔ interrupt() stops a running command and leaves the shell usable (2359.2438ms)
+✔ drops the viewer auto-replies the server already sent (1823.8023ms)
+✔ shell starts in UTF-8, not the OEM code page (2476.5336ms)
+✔ a resize requested before the shell is up still applies (2437.0086ms)
+✔ exit code propagates (2190.2398ms)
+✔ cleanEnv strips session-control vars but keeps real auth and PATH (0.937ms)
+✔ cleanEnv does not mutate the environment it is given (0.2511ms)
+✔ a real pane does not inherit a parent Claude Code session (2239.5048ms)
+✔ a created pane is tracked and describable (1835.984ms)
+✔ a default title is derived when none is given (11.2936ms)
+✔ describe() reports an agent status reported over OSC 7501 (2262.7833ms)
+✔ watchers fire when the fleet changes, and say why (2262.2671ms)
+✔ a throwing watcher does not take the registry down (12.9244ms)
+✔ close() disposes the pane and forgets it (1814.0754ms)
+✔ panes are independent of each other (1835.8254ms)
+orchestrator  http://127.0.0.1:7911
+shells        powershell, gitbash
+✔ creates a pane over HTTP (147.539ms)
+✔ rejects an unknown shell without crashing (6.9736ms)
+✔ attaching to a missing pane errors instead of hanging (17.9707ms)
+✔ a pane outlives its viewer, and a new viewer gets the scrollback (2891.767ms)
+✔ the inbox reports a blocked agent and ranks it first (2301.0945ms)
+✔ the fleet socket pushes an inbox snapshot (30.1071ms)
+✔ deleting a pane kills it and removes it from the inbox (1833.6986ms)
+✔ a websocket from a hostile origin is rejected at the handshake (8.9731ms)
+✔ a websocket from our own page is accepted (9.1147ms)
+✔ a websocket with no origin is accepted (non-browser client) (5.2969ms)
+✔ an api call from a hostile origin is refused (7.7636ms)
+✔ reading the inbox from a hostile origin is refused (2.4111ms)
+✔ a non-repo path is refused as the flock ground (173.907ms)
+✔ choosing a repo, then raising a lamb, gives it its own pen (4358.9481ms)
+✔ two lambs get different pens (4270.9017ms)
+✔ a pen whose lamb is gone shows up as abandoned, and can be tended (5127.4313ms)
+✔ a lamb whose shell exits keeps exactly one row and is not also untended (4863.1589ms)
+✔ tending from a dead row reuses the same pen and branch (6128.3414ms)
+✔ culling the dead row after tending cannot delete the live lamb work (7571.1428ms)
+✔ tending a pen that is not abandoned is refused (3.1456ms)
+✔ culling an abandoned pen removes it from disk (3382.2922ms)
+ℹ tests 121
+ℹ suites 0
+ℹ pass 121
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 147865.2688

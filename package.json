@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "dev": "node src/server.mjs",
-    "test": "node --test --test-force-exit test/*.test.mjs"
+    "test": "node --test --test-concurrency=1 --test-force-exit test/*.test.mjs"
   },
   "dependencies": {
     "@lydell/node-pty": "1.2.0-beta.18",

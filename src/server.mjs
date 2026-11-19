@@ -37,7 +37,18 @@ const VENDOR = {
 };
 
 const registry = new PaneRegistry();
-const inbox = () => summarize(registry.describe(), Date.now());
+
+const inbox = () => {
+  const panes = registry.describe();
+  const snapshot = summarize(panes, Date.now());
+  // An exited lamb keeps its row, and that row is now the only place its pen is
+  // reachable from - untended lists pens with no pane at all. So the row has to
+  // carry the path, or there is no way back into the pen. `order` and `buckets`
+  // share the same row objects, so one pass covers both.
+  const pens = new Map(panes.filter(p => p.exit && p.pen).map(p => [p.id, p.pen.path]));
+  for (const row of snapshot.order) if (pens.has(row.id)) row.penPath = pens.get(row.id);
+  return snapshot;
+};
 
 // The flock works one repo at a time. Session-scoped on purpose: pens outlive
 // the orchestrator (see DELETE /api/panes), so there is nothing to persist.
@@ -59,13 +70,15 @@ const refreshAbandoned = () => (refreshChain = refreshChain.then(computeAbandone
 
 async function computeAbandoned() {
   if (!repo) { abandonedCache = []; return; }
-  // An exited shell does not hold its pen: the lamb is gone and the work is
-  // sitting there untended, which is exactly what this bucket is for.
-  const live = new Set(registry.describe().filter(p => !p.exit).map(p => p.pen?.path).filter(Boolean));
+  // Untended means *no pane object at all* - the post-restart case this bucket
+  // exists for. An exited lamb still holds its pen: its row is on the board
+  // with its own tend and cull, so listing the pen here too would put one pen
+  // in two places with two different culls.
+  const held = new Set(registry.describe().map(p => p.pen?.path).filter(Boolean));
   const pens = await listPens(repo).catch(() => []);
   abandonedCache = pens
     .filter(w => w.branch?.startsWith(BRANCH_PREFIX))   // ours, never the main worktree
-    .filter(w => !live.has(w.path))
+    .filter(w => !held.has(w.path))
     .map(w => ({ path: w.path, branch: w.branch, locked: w.locked }));
 }
 
@@ -182,7 +195,12 @@ const server = http.createServer(async (req, res) => {
       if (penPath) {
         // Tending: put a lamb back into an existing pen. Its work is already
         // there, so we must NOT create a worktree or touch the branch.
-        pen = abandonedCache.find(p => p.path === penPath);
+        // Two places a pen we know about can be: untended (no pane object at
+        // all) or still attached to an exited lamb's row. The caller's path is
+        // never used as a path - it only ever selects one of those records, so
+        // an arbitrary directory can never be tended.
+        pen = abandonedCache.find(p => p.path === penPath)
+          ?? registry.describe().find(p => p.exit && p.pen?.path === penPath)?.pen;
         if (!pen) throw new Error(`no abandoned pen at ${penPath}`);
         // The dead lamb whose shell exited still has a row pointing at this
         // pen. Forget it, or deleting that row later would remove the pen out

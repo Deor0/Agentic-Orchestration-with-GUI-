@@ -15,7 +15,7 @@ Read `SPEC.md` for the feature contract and `README.md` for the why.
 | 6 | **Diff and merge-back** | 📋 **not started — pick up here** |
 | 7 | Cost attribution | 📋 not started |
 
-**Suite: 112/112 green.** `ORCH_NO_TOASTS=1 node --test --test-force-exit "test/*.test.mjs"` (~2 min; the 20-cycle worktree gate alone is 23s).
+**Suite: 121/121 green, run serially.** Just `npm test` — the script now pins `--test-concurrency=1`, which is load-bearing, not tidiness (see the gotcha below). ~2.5 min (measured back to back today: 155s then 152s, both 121/121); the 20-cycle worktree gate alone is 23s. Prefix `ORCH_NO_TOASTS=1` if you don't want real toasts popping during the run.
 
 ## What the tool does today
 
@@ -53,12 +53,14 @@ Nothing written. `SPEC.md` §6 has the contract. The shape:
 - `[char]0x2500 + [char]0x2502` is **numeric addition** in PowerShell, not string concat.
 - Bundled ConPTY **forwards DA1 to the terminal and the shell emits nothing until answered**. A pane that spawns and sits dead is this.
 - `node-pty` on Windows ignores its own `encoding` option and hands you an **already-decoded string**.
+- **An exited pane still counts as holding its pen, deliberately.** A lamb whose shell dies keeps exactly one row on the board, carrying its own `tend` action; the pen is not released back to *untended*. That bucket now means only "a pen with no pane object at all" — the post-restart case. The point is that one pen can never show up in two places with two different cull paths, which is how you delete live work by accident.
+- **The suite must run serially — `--test-concurrency=1`, already pinned in the `test` script. Don't remove it.** `node --test` runs test *files* in parallel by default; five of them spawn real PowerShell/ConPTY processes and `git.test.mjs` churns real worktrees on top, so the PTY timing assumptions (1800 ms warmup, prompt handshakes) lose their races under the load. Measured today, same machine: parallel → `test/panes.test.mjs` hung **400s** into the timeout, 119 pass / 1 fail; that same file alone → 7/7 in **10s**; serial → **119/119 in 132s**, clean. Re-measured serially after the 121-test change, twice back to back: **121/121 in 155s, then 121/121 in 152s**. Two and a half minutes is the deliberate price of determinism. This one has been misdiagnosed three times already — as orphaned processes (an 11-minute run), as `tail` buffering (two "hangs"), and as the Ctrl-C test needing its fixed sleeps removed (it didn't; it needed less load). A test that only fails in a full run is this until proven otherwise.
 
 ## Unverified / owed — needs your eyes, not mine
 
-- **Nobody has looked at the redesigned UI.** Confirm `✦ † ❧ ☉ ☽` render as monochrome glyphs, not colour emoji or tofu.
+- **Board glyphs: all five confirmed monochrome** — `✦ † ❧ ☉ ☽` were checked and render as glyphs, not colour emoji or tofu. **But two have since been swapped (`†`→`✖`, `❧`→`✽`) and the replacements have not been looked at.** The rest of the redesigned UI still has had no eyes on it.
 - **Toast click-routing through the server is untested.** `node src/notify.mjs` raises one real toast — click it and a pane id should print.
 - Toast app name and icon are SnoreToast defaults; unseen.
 - `snoretoast-x64.exe` is unsigned: Smart App Control or AV quarantine silently disables toasts (no crash, no notifications).
 - Feature 3's missing tiers mean any agent not speaking OSC 7501 shows as `working/inferred` forever — the inbox is only fully useful with Claude Code.
-- **The whole app has never been driven by hand** end to end with a real `claude` session in a pen.
+- ~~The whole app has never been driven by hand end to end with a real `claude` session in a pen.~~ **Settled today: the OSC 7501 chain is proven end to end against a real Claude Code session in a pen** — emit → parse → state → board. Everything outside that chain is still only incidentally hand-driven.
