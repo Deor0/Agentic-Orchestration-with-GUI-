@@ -294,8 +294,9 @@ test('a pen whose lamb is gone shows up as abandoned, and can be tended', async 
 });
 
 // The case a user actually hits: nobody closed anything, the agent's own shell
-// ended. Nothing but the exit event can make the pen visible again.
-test('a pen whose shell exits by itself becomes abandoned with no api call', async () => {
+// ended. Its row stays on the board, so the pen is already reachable there.
+// Listing it in untended as well is one pen in two places, with two culls.
+test('a lamb whose shell exits keeps exactly one row and is not also untended', async () => {
   assert.equal((await api('POST', '/api/repo', { path: testRepo })).status, 200);
   const lamb = (await api('POST', '/api/panes', {})).body;
   const penPath = lamb.pen.path;
@@ -303,11 +304,74 @@ test('a pen whose shell exits by itself becomes abandoned with no api call', asy
     await wait(1800);
     registry.get(lamb.id).write('exit 0\r');
     assert.ok(await until(() => registry.get(lamb.id)?.exit != null), 'the shell never exited');
+    await wait(800);   // let the exit-driven refresh land before asserting on absence
 
-    const found = await until(async () =>
-      (await api('GET', '/api/inbox')).body.abandoned.some(p => p.path === penPath));
-    assert.ok(found, `pen ${penPath} was not reported as abandoned after its shell exited`);
+    const { body } = await api('GET', '/api/inbox');
+    assert.ok(!body.abandoned.some(p => p.path === penPath),
+      `pen ${penPath} is listed as untended while its row is still on the board`);
+    const rows = body.order.filter(r => r.id === lamb.id);
+    assert.equal(rows.length, 1, 'the exited lamb lost its row');
+    assert.equal(rows[0].penPath, penPath,
+      'the row carries no pen path, so it cannot offer tend and the pen is unreachable');
   } finally {
+    await api('DELETE', `/api/panes/${lamb.id}`).catch(() => {});
+    await api('DELETE', '/api/pens', { path: penPath }).catch(() => {});
+  }
+});
+
+test('tending from a dead row reuses the same pen and branch', async () => {
+  assert.equal((await api('POST', '/api/repo', { path: testRepo })).status, 200);
+  const lamb = (await api('POST', '/api/panes', {})).body;
+  const { path: penPath, branch } = lamb.pen;
+  let tended = null;
+  try {
+    await wait(1800);
+    registry.get(lamb.id).write('exit 0\r');
+    assert.ok(await until(() => registry.get(lamb.id)?.exit != null), 'the shell never exited');
+
+    const res = await api('POST', '/api/panes', { penPath });
+    assert.equal(res.status, 201, `tend from a dead row failed: ${JSON.stringify(res.body)}`);
+    tended = res.body;
+    assert.equal(tended.cwd, penPath, 'tended lamb did not start in the existing pen');
+    assert.equal(tended.pen.branch, branch, 'tending moved the lamb to a different branch');
+    assert.ok(existsSync(penPath), 'tending destroyed the pen it was meant to reuse');
+
+    // one pen, one row: the dead row must be gone, not sitting beside the live one
+    assert.ok(!(await api('GET', '/api/inbox')).body.order.some(r => r.id === lamb.id),
+      'the dead row survived tending and still points at the live lamb pen');
+  } finally {
+    await wait(1200);
+    if (tended) await api('DELETE', `/api/panes/${tended.id}`).catch(() => {});
+    await api('DELETE', `/api/panes/${lamb.id}`).catch(() => {});
+    await api('DELETE', '/api/pens', { path: penPath }).catch(() => {});
+  }
+});
+
+// The worst thing this app can do is delete unmerged agent work. A stale tab
+// still showing the dead row must not be able to cull the pen out from under
+// the lamb that was just tended into it.
+test('culling the dead row after tending cannot delete the live lamb work', async () => {
+  assert.equal((await api('POST', '/api/repo', { path: testRepo })).status, 200);
+  const lamb = (await api('POST', '/api/panes', {})).body;
+  const penPath = lamb.pen.path;
+  let tended = null;
+  try {
+    await wait(1800);
+    registry.get(lamb.id).write('exit 0\r');
+    assert.ok(await until(() => registry.get(lamb.id)?.exit != null), 'the shell never exited');
+
+    const res = await api('POST', '/api/panes', { penPath });
+    assert.equal(res.status, 201, `tend from a dead row failed: ${JSON.stringify(res.body)}`);
+    tended = res.body;
+
+    assert.equal((await api('DELETE', `/api/panes/${lamb.id}`)).status, 404,
+      'the dead pane id is still deletable and still owns the pen');
+    await wait(1500);   // removePen renames aside first, so a breakage shows fast
+    assert.ok(existsSync(penPath), 'culling the dead row destroyed the live lamb worktree');
+    assert.ok(registry.get(tended.id), 'culling the dead row took the live lamb with it');
+  } finally {
+    await wait(1200);
+    if (tended) await api('DELETE', `/api/panes/${tended.id}`).catch(() => {});
     await api('DELETE', `/api/panes/${lamb.id}`).catch(() => {});
     await api('DELETE', '/api/pens', { path: penPath }).catch(() => {});
   }

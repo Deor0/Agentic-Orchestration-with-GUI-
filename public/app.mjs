@@ -24,8 +24,9 @@ const BUCKETS = {
   idle:     { label: 'resting',  glyph: '☽︎' },  // ☽ asleep
 };
 const NOUN = 'lamb';
-// Not a lamb state: a pen on disk with nobody in it. Pens survive a restart,
-// so without this the surviving work is invisible and unreachable.
+// Not a lamb state: a pen on disk with no row of its own - i.e. one that
+// survived a restart. A lamb that merely exited keeps its row, and tends from
+// there; listing it here too would be the same pen in two places.
 const UNTENDED = { label: 'untended', glyph: '⌂' };   // ⌂ the empty fold
 
 let current = null;      // pane id being viewed
@@ -126,9 +127,12 @@ function render() {
       // "~" marks an inferred value for anyone reading the text, not the dot
       const meta = value && inferred ? `~${value}` : value;
 
+      // penPath is set only on a lamb that has exited: its pen is still on
+      // disk, so the row is where you get back into it.
       el.innerHTML = `<span class="dot"></span>
         <span class="name"></span>
         <span class="meta">${meta}</span>
+        ${row.penPath ? `<button class="act tend" title="raise a lamb back into this pen">tend</button>` : ''}
         <span class="cull" title="cull">×</span>`;
       const name = el.querySelector('.name');
       name.textContent = row.title;
@@ -136,6 +140,8 @@ function render() {
       // the full request visible, and 320px cannot promise that.
       name.title = row.detail?.msg ? `${row.title}\n\n${row.detail.msg}` : row.title;
       el.querySelector('.cull').onclick = e => { e.stopPropagation(); closePane(row.id); };
+      const tend = el.querySelector('.tend');
+      if (tend) tend.onclick = e => { e.stopPropagation(); tendPen(row.penPath); };
       section.append(el);
     }
     boardEl.append(section);
@@ -162,18 +168,18 @@ function renderUntended() {
     name.textContent = pen.branch.replace(/^cult\//, '');
     name.title = `${pen.branch}
 ${pen.path}`;
-    el.querySelector('.tend').onclick = () => tendPen(pen);
+    el.querySelector('.tend').onclick = () => tendPen(pen.path);
     el.querySelector('.cull').onclick = () => cullPen(pen);
     section.append(el);
   }
   boardEl.append(section);
 }
 
-async function tendPen(pen) {
+async function tendPen(penPath) {
   const res = await fetch('/api/panes', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ shellId: shellEl.value, penPath: pen.path }),
+    body: JSON.stringify({ shellId: shellEl.value, penPath }),
   });
   const body = await res.json();
   if (!res.ok) return alert(body.error);
