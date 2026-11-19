@@ -4,6 +4,7 @@ import { FitAddon } from '/vendor/addon-fit.mjs';
 const $ = id => document.getElementById(id);
 const boardEl = $('board'), titleEl = $('title'), statusEl = $('status');
 const termEl = $('term'), emptyEl = $('empty'), shellEl = $('shell');
+const repoEl = $('repo'), repoNameEl = $('repo-name');
 
 // The whole theme lives here. Code identifiers stay literal on purpose: the
 // buckets are still needsYou/failed/working server-side, only the words change.
@@ -13,18 +14,25 @@ const termEl = $('term'), emptyEl = $('empty'), shellEl = $('shell');
 // carried by colour alone - that is the colour-vision fallback.
 const BUCKETS = {
   needsYou: { label: 'bleating', glyph: '✦' },  // ✦ the one calling
-  failed:   { label: 'strayed',  glyph: '†' },  // † the obituary dagger
-  working:  { label: 'grazing',  glyph: '❧' },  // ❧ the leaf
+  // ✖ not † : the dagger paints 4.5px wide and reads as a speck, not a mark.
+  failed:   { label: 'strayed',  glyph: '✖' },
+  // ✽ not ❧ : the fleuron is visual mud at this size - it reads as an ampersand.
+  working:  { label: 'grazing',  glyph: '✽' },
   // U+FE0E forces text presentation: without it Windows can render these two
   // as colour emoji, which would break the monochrome glyph set.
   done:     { label: 'gathered', glyph: '☉︎' },  // ☉ the whole circle
   idle:     { label: 'resting',  glyph: '☽︎' },  // ☽ asleep
 };
 const NOUN = 'lamb';
+// Not a lamb state: a pen on disk with nobody in it. Pens survive a restart,
+// so without this the surviving work is invisible and unreachable.
+const UNTENDED = { label: 'untended', glyph: '⌂' };   // ⌂ the empty fold
 
 let current = null;      // pane id being viewed
 let paneSocket = null;
 let latest = { buckets: {}, order: [] };
+let repo = null;          // the ground the flock grazes
+let abandoned = [];       // pens with no lamb in them
 
 // ---------- terminal ----------
 
@@ -88,10 +96,9 @@ const ago = ms => ms < 60000 ? `${Math.round(ms / 1000)}s` : `${Math.round(ms / 
 
 function render() {
   boardEl.textContent = '';
-  if (!latest.order.length) {
-    boardEl.innerHTML = '<p class="empty-board">the pasture is empty</p>';
-    return;
-  }
+  // No placeholder here: the main pane already says "the pasture is empty",
+  // and printing the same sentence twice on one screen reads as a bug.
+  if (!latest.order.length) return;
 
   for (const [bucket, rows] of Object.entries(latest.buckets)) {
     if (!rows?.length) continue;            // empty buckets read as an admin table
@@ -125,15 +132,92 @@ function render() {
         <span class="cull" title="cull">×</span>`;
       const name = el.querySelector('.name');
       name.textContent = row.title;
-      name.title = row.title;               // long branch names ellipsise
+      // Show what was actually asked. Hover only for now: an inline Allow needs
+      // the full request visible, and 320px cannot promise that.
+      name.title = row.detail?.msg ? `${row.title}\n\n${row.detail.msg}` : row.title;
       el.querySelector('.cull').onclick = e => { e.stopPropagation(); closePane(row.id); };
       section.append(el);
     }
     boardEl.append(section);
   }
+
+  renderUntended();
+}
+
+function renderUntended() {
+  if (!abandoned.length) return;
+  const section = document.createElement('section');
+  section.className = 'bucket untended';
+  section.dataset.bucket = UNTENDED.label;
+  section.innerHTML = `<h2><span class="g">${UNTENDED.glyph}</span>${UNTENDED.label}<i></i><span class="n">${abandoned.length}</span></h2>`;
+
+  for (const pen of abandoned) {
+    const el = document.createElement('div');
+    el.className = 'row pen';
+    el.innerHTML = `<span class="dot"></span>
+      <span class="name"></span>
+      <button class="act tend" title="raise a lamb back into this pen">tend</button>
+      <span class="cull" title="cull — deletes this pen and its work">×</span>`;
+    const name = el.querySelector('.name');
+    name.textContent = pen.branch.replace(/^cult\//, '');
+    name.title = `${pen.branch}
+${pen.path}`;
+    el.querySelector('.tend').onclick = () => tendPen(pen);
+    el.querySelector('.cull').onclick = () => cullPen(pen);
+    section.append(el);
+  }
+  boardEl.append(section);
+}
+
+async function tendPen(pen) {
+  const res = await fetch('/api/panes', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ shellId: shellEl.value, penPath: pen.path }),
+  });
+  const body = await res.json();
+  if (!res.ok) return alert(body.error);
+  open(body.id);
+}
+
+async function cullPen(pen) {
+  // This destroys work that survived a restart, so make them say it out loud.
+  if (!confirm(`Cull ${pen.branch}?
+
+This deletes the pen at
+${pen.path}
+and any work in it that was never merged.`)) return;
+  const res = await fetch('/api/pens', {
+    method: 'DELETE',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ path: pen.path }),
+  });
+  if (!res.ok) alert((await res.json()).error);
 }
 
 // ---------- actions ----------
+
+// A browser cannot hand us a real filesystem path - showDirectoryPicker() gives
+// an opaque handle - and git needs a path. So: paste it, server validates.
+async function chooseRepo() {
+  const dir = prompt('Path to the repository the flock should graze:', repo ?? '');
+  if (!dir) return;
+  const res = await fetch('/api/repo', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ path: dir.trim() }),
+  });
+  const body = await res.json();
+  if (!res.ok) return alert(body.error);
+  setRepo(body.repo);
+}
+
+function setRepo(path) {
+  repo = path;
+  repoEl.classList.toggle('set', Boolean(path));
+  repoNameEl.textContent = path ? path.split(/[\\/]/).filter(Boolean).pop() : 'no ground chosen';
+  repoEl.title = path ?? 'the ground the flock grazes — click to change';
+}
 
 async function newPane() {
   const res = await fetch('/api/panes', {
@@ -141,7 +225,10 @@ async function newPane() {
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ shellId: shellEl.value }),
   });
-  if (res.ok) open((await res.json()).id);
+  const body = await res.json();
+  if (!res.ok) return alert(body.error);
+  if (body.warnings?.length) console.warn('pen warnings:', body.warnings);
+  open(body.id);
 }
 
 async function closePane(id) {
@@ -150,6 +237,7 @@ async function closePane(id) {
 }
 
 $('new').onclick = newPane;
+repoEl.onclick = chooseRepo;
 $('interrupt').onclick = () => { send({ type: 'interrupt' }); term.focus(); };
 
 // The single most useful key here: go to whoever has waited longest.
@@ -170,6 +258,7 @@ function connectFleet() {
     if (msg.type === 'focus') return open(msg.id);   // user clicked a toast
     if (msg.type !== 'inbox') return;
     latest = msg;
+    abandoned = msg.abandoned ?? [];
     // A pane that disappeared server-side must not leave a dead terminal up.
     if (current && !latest.order.some(r => r.id === current)) showEmpty();
     render();
@@ -181,5 +270,6 @@ const { shells, default: def } = await (await fetch('/api/shells')).json();
 shellEl.innerHTML = shells.map(s => `<option value="${s.id}">${s.label}</option>`).join('');
 shellEl.value = def;
 
+setRepo((await (await fetch('/api/repo')).json()).repo);
 showEmpty();
 connectFleet();

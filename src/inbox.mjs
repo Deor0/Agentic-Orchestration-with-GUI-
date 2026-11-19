@@ -37,7 +37,10 @@ function row(pane, now, staleMs) {
     id: pane.id,
     title: pane.title,
     bucket,
-    status: pane.status ?? null,
+    // Once a pane has exited, the exit code is the truth. Carrying the last
+    // reported status forward made a failed row still read "blocked:permission".
+    status: pane.exit ? null : (pane.status ?? null),
+    detail: pane.exit ? null : (pane.detail ?? null),
     exitCode: pane.exit ? pane.exit.exitCode : null,
     confidence: pane.exit || pane.status ? 'reported' : 'inferred',
     stale: bucket === 'working' && isStale(pane, now, staleMs),
@@ -58,7 +61,11 @@ function classify(pane) {
   // cannot tell "waiting for you" from "thinking slowly", and a false "needs
   // you" is worse than no signal. This omission is deliberate - see SPEC §3.
   if (pane.status?.startsWith('blocked')) return 'needsYou';
-  if (pane.status === 'done') return 'done';
+  // `done` means "this turn finished", not "the lamb is finished": Claude Code
+  // reports done and then sits at its prompt awaiting the next instruction.
+  // Only a clean exit earns `done` - otherwise it is resting, ready for you.
+  // Without this the board says "done" forever and you cull live work.
+  if (pane.status === 'done') return 'idle';
   if (pane.status === 'idle') return 'idle';
   return 'working';   // reported `working`, or never reported: assume working, flagged inferred
 }

@@ -15,18 +15,22 @@ export class PaneRegistry {
     this.watchers = new Set();
   }
 
-  create({ shellId, cwd, title, cols, rows } = {}) {
+  /** `pen` is opaque here: {path, branch} if the lamb got a worktree. The
+   *  registry does no git - the server owns that, so this stays testable. */
+  create({ shellId, cwd, title, cols, rows, pen = null } = {}) {
     const pane = new Pane({ shellId, cwd, cols, rows });
+    pane.pen = pen;
     // Display string, not an identifier - the themed UI reads rows as "Lamb · x".
-    pane.title = title ?? `Lamb · ${pane.cwd.split(/[\\/]/).pop()}`;
+    const label = pen?.branch?.replace(/^cult\//, '') ?? pane.cwd.split(/[\\/]/).pop();
+    pane.title = title ?? `Lamb · ${label}`;
     this.panes.set(pane.id, pane);
 
     // Any state change is worth telling the UI about: these are exactly the
     // moments a pane can enter or leave the attention queue.
-    pane.onStatus(() => this.#changed());
-    pane.subscribe((_bytes, exit) => { if (exit) this.#changed(); });
+    pane.onStatus(() => this.#changed('status'));
+    pane.subscribe((_bytes, exit) => { if (exit) this.#changed('exit'); });
 
-    this.#changed();
+    this.#changed('roster');
     return pane;
   }
 
@@ -40,9 +44,14 @@ export class PaneRegistry {
       shellId: p.shellId,
       cwd: p.cwd,
       status: p.status?.status ?? null,
+      // The parser already decoded these; without them the board can say
+      // "blocked:permission" but never *what* permission, which makes an
+      // inline Allow impossible and leaves the toast body a bare enum.
+      detail: p.status ? { msg: p.status.msg, kind: p.status.kind ?? null, app: p.status.app } : null,
       statusAt: p.statusAt,
       lastOutputAt: p.lastOutputAt,
       exit: p.exit,
+      pen: p.pen,
     }));
   }
 
@@ -51,25 +60,33 @@ export class PaneRegistry {
     if (!pane) return false;
     pane.dispose();
     this.panes.delete(id);
-    this.#changed();
+    this.#changed('roster');
     return true;
   }
 
-  /** Subscribe to "something about the fleet changed". */
+  /** Subscribe to "something about the fleet changed". `fn(reason)`, where
+   *  reason is 'roster' (a pane was added or forgotten), 'exit' (a shell ended
+   *  by itself), 'status' (an agent reported), 'touch' or 'shutdown'. A watcher
+   *  that does real work needs the distinction: 'status' fires on every OSC
+   *  7501 report, potentially many per second; the rest are rare. */
   watch(fn) {
     this.watchers.add(fn);
     return () => this.watchers.delete(fn);
   }
 
-  #changed() {
+  /** Tell watchers the fleet moved for a reason the registry cannot see
+   *  (e.g. an abandoned pen was culled). */
+  touch() { this.#changed('touch'); }
+
+  #changed(reason) {
     for (const fn of this.watchers) {
-      try { fn(); } catch { /* a bad watcher must not take the fleet down */ }
+      try { fn(reason); } catch { /* a bad watcher must not take the fleet down */ }
     }
   }
 
   disposeAll() {
     for (const pane of this.panes.values()) pane.dispose();
     this.panes.clear();
-    this.#changed();
+    this.#changed('shutdown');
   }
 }

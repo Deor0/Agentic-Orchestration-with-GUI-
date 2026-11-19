@@ -5,6 +5,7 @@ import { WebSocketServer } from 'ws';
 import { PaneRegistry } from './panes.mjs';
 import { summarize } from './inbox.mjs';
 import { notify, onActivate } from './notify.mjs';
+import { isRepo, createPen, removePen, sweep, listPens, BRANCH_PREFIX } from './git.mjs';
 import { available, defaultShellId } from './shell.mjs';
 
 const PORT = Number(process.env.PORT ?? 7777);
@@ -38,6 +39,48 @@ const VENDOR = {
 const registry = new PaneRegistry();
 const inbox = () => summarize(registry.describe(), Date.now());
 
+// The flock works one repo at a time. Session-scoped on purpose: pens outlive
+// the orchestrator (see DELETE /api/panes), so there is nothing to persist.
+let repo = null;
+let lambCount = 0;
+
+// Pens outlive the orchestrator, so after a restart there are worktrees full of
+// agent output with no lamb in them. They are still *registered* worktrees, so
+// sweep() correctly ignores them - it reports only what git has forgotten.
+// Without this they are invisible in the UI and the surviving work is lost.
+// Cached, not polled: `git worktree list` on a timer is exactly the Defender
+// tax the research warned about. Refreshed only when the fleet actually moves.
+let abandonedCache = [];
+
+// Serialized, so two overlapping refreshes can never write their results out of
+// order and leave the cache describing a fleet that has already moved on.
+let refreshChain = Promise.resolve();
+const refreshAbandoned = () => (refreshChain = refreshChain.then(computeAbandoned, computeAbandoned));
+
+async function computeAbandoned() {
+  if (!repo) { abandonedCache = []; return; }
+  // An exited shell does not hold its pen: the lamb is gone and the work is
+  // sitting there untended, which is exactly what this bucket is for.
+  const live = new Set(registry.describe().filter(p => !p.exit).map(p => p.pen?.path).filter(Boolean));
+  const pens = await listPens(repo).catch(() => []);
+  abandonedCache = pens
+    .filter(w => w.branch?.startsWith(BRANCH_PREFIX))   // ours, never the main worktree
+    .filter(w => !live.has(w.path))
+    .map(w => ({ path: w.path, branch: w.branch, locked: w.locked }));
+}
+
+// A lamb can leave its pen with no API call at all - the agent finishes or
+// crashes and the shell exits by itself - so the cache has to follow the fleet,
+// not the HTTP handlers. Deliberately NOT on 'status': agents report OSC 7501
+// many times a second and this shells out to git, which is the Defender tax
+// SPEC §5 exists to avoid. Not on 'touch' either (that is our own echo) nor on
+// 'shutdown' - a git child whose cwd is the repo outlives us and then Windows
+// will not let anything delete that directory.
+registry.watch(reason => {
+  if (reason !== 'roster' && reason !== 'exit') return;
+  refreshAbandoned().then(() => registry.touch());
+});
+
 // Toast only on the *transition* into needsYou. Re-notifying every poll for a
 // pane that is still blocked is how a notifier trains you to ignore it.
 const notified = new Set();
@@ -50,7 +93,7 @@ function toastNewlyBlocked(snapshot) {
     notified.add(row.id);
     // No Approve affordance here by design: a toast cannot guarantee the full
     // request is visible, and SPEC forbids approving what you cannot read.
-    notify({ title: `${row.title} needs you`, body: row.status, id: row.id });
+    notify({ title: `${row.title} needs you`, body: row.detail?.msg || row.status, id: row.id });
   }
 }
 
@@ -87,26 +130,99 @@ const server = http.createServer(async (req, res) => {
   // Everything under /api can read pane ids or spawn shells. Gate the lot.
   if (path.startsWith('/api/') && !originOk(req)) return json(res, 403, { error: 'bad origin' });
 
+  // the only thing in the console was this 404; nothing to serve, so say so
+  if (path === '/favicon.ico') return res.writeHead(204).end();
+
   if (req.method === 'GET' && SERVE[path]) return sendFile(res, join(ROOT, SERVE[path]));
   if (req.method === 'GET' && VENDOR[path]) return sendFile(res, join(ROOT, 'node_modules', normalize(VENDOR[path])));
   if (req.method === 'GET' && path === '/api/shells') {
     return json(res, 200, { shells: available(), default: defaultShellId() });
   }
-  if (req.method === 'GET' && path === '/api/inbox') return json(res, 200, inbox());
+  if (req.method === 'GET' && path === '/api/inbox') {
+    return json(res, 200, { ...inbox(), abandoned: abandonedCache });
+  }
+
+  if (req.method === 'GET' && path === '/api/repo') {
+    return json(res, 200, { repo, strays: repo ? await sweep(repo).catch(() => []) : [] });
+  }
+
+  if (req.method === 'POST' && path === '/api/repo') {
+    const { path: dir } = await readBody(req);
+    if (!dir || !await isRepo(dir)) return json(res, 400, { error: `not a git repository: ${dir}` });
+    repo = dir;
+    // Pens outlive the orchestrator but `lambCount` does not, so a fresh run
+    // would ask for lamb-1 again, collide with the pen on disk, and get named
+    // "lamb-1-2". Resume numbering above whatever already exists.
+    lambCount = (await listPens(repo).catch(() => []))
+      .reduce((max, w) => Math.max(max, Number(/lamb-(\d+)\b/.exec(w.branch ?? w.path ?? '')?.[1] ?? 0)), 0);
+    await refreshAbandoned();
+    registry.touch();
+    return json(res, 200, { repo });
+  }
+
+  if (req.method === 'DELETE' && path === '/api/pens') {
+    const { path: penPath } = await readBody(req);
+    const target = abandonedCache.find(p => p.path === penPath);
+    if (!target) return json(res, 404, { error: `no abandoned pen at ${penPath}` });
+    try {
+      await removePen({ repo, path: target.path });
+      await refreshAbandoned();
+      registry.touch();
+      return json(res, 200, { culled: target.path });
+    } catch (err) {
+      return json(res, 500, { error: err.message });
+    }
+  }
 
   if (req.method === 'POST' && path === '/api/panes') {
-    const { shellId, cwd, title } = await readBody(req);
+    const { shellId, cwd, title, penPath } = await readBody(req);
+    let pen = null;
+    let made = false;
     try {
-      const pane = registry.create({ shellId, cwd, title });
-      return json(res, 201, { id: pane.id, title: pane.title, shell: pane.shellId, cwd: pane.cwd });
+      if (penPath) {
+        // Tending: put a lamb back into an existing pen. Its work is already
+        // there, so we must NOT create a worktree or touch the branch.
+        pen = abandonedCache.find(p => p.path === penPath);
+        if (!pen) throw new Error(`no abandoned pen at ${penPath}`);
+        // The dead lamb whose shell exited still has a row pointing at this
+        // pen. Forget it, or deleting that row later would remove the pen out
+        // from under the lamb we are about to put in it.
+        for (const p of registry.describe()) if (p.exit && p.pen?.path === penPath) registry.close(p.id);
+      } else if (repo) {
+        // Every lamb gets its own pen, so two agents can never edit the same file.
+        pen = await createPen({ repo, slug: `lamb-${++lambCount}` });
+        made = true;
+      }
+      const pane = registry.create({ shellId, cwd: pen?.path ?? cwd, title, pen });
+      await refreshAbandoned();            // a tended pen is no longer abandoned
+      return json(res, 201, {
+        id: pane.id, title: pane.title, shell: pane.shellId, cwd: pane.cwd,
+        pen, warnings: pen?.warnings ?? [],
+      });
     } catch (err) {
+      // Only clean up a pen WE just made. Deleting a tended pen here would
+      // destroy the surviving work we were trying to rescue.
+      if (pen && made) removePen({ repo, path: pen.path }).catch(() => {});
       return json(res, 400, { error: err.message });
     }
   }
 
   const close = path.match(/^\/api\/panes\/([\w-]+)$/);
   if (req.method === 'DELETE' && close) {
-    return json(res, registry.close(close[1]) ? 200 : 404, { closed: close[1] });
+    const pane = registry.get(close[1]);
+    if (!pane) return json(res, 404, { error: `no such lamb: ${close[1]}` });
+    const pen = pane.pen;
+
+    // Order matters: the process tree dies first (git.mjs documents this as a
+    // precondition), because Windows will not delete a directory that is any
+    // live process's CWD.
+    registry.close(close[1]);
+    if (pen && repo) {
+      try { await removePen({ repo, path: pen.path }); }
+      catch (err) { return json(res, 200, { closed: close[1], penError: err.message }); }
+    }
+    await refreshAbandoned();
+    return json(res, 200, { closed: close[1] });
   }
 
   res.writeHead(404).end('not found');
@@ -126,7 +242,9 @@ function attachFleet(ws) {
   const push = () => {
     const snapshot = inbox();
     toastNewlyBlocked(snapshot);
-    if (ws.readyState === ws.OPEN) ws.send(JSON.stringify({ type: 'inbox', ...snapshot }));
+    if (ws.readyState === ws.OPEN) {
+      ws.send(JSON.stringify({ type: 'inbox', ...snapshot, abandoned: abandonedCache }));
+    }
   };
   const stop = registry.watch(push);
   push();
@@ -170,6 +288,8 @@ function attachPane(ws, id) {
 }
 
 for (const sig of ['SIGINT', 'SIGTERM']) {
+  // Kills the agent trees but deliberately leaves the pens on disk: the work is
+  // in them. Only an explicit cull removes a pen; sweep() reclaims any strays.
   process.on(sig, () => { registry.disposeAll(); process.exit(0); });
 }
 
