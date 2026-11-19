@@ -1,0 +1,65 @@
+warning: in the working copy of 'tracked.txt', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'tracked.txt', LF will be replaced by CRLF the next time Git touches it
+✔ isRepo: true inside a work tree, false outside, false for a missing path (1240.8902ms)
+✔ sanitizeSlug: illegal characters, reserved device names, trailing dot/space (2.9305ms)
+warning: in the working copy of 'tracked.txt', LF will be replaced by CRLF the next time Git touches it
+✔ createPen: short root, cult/ branch off HEAD, tracked files present (2471.3602ms)
+warning: in the working copy of 'tracked.txt', LF will be replaced by CRLF the next time Git touches it
+✔ createPen: a reserved name and illegal characters still produce a pen (3112.7509ms)
+warning: in the working copy of 'tracked.txt', LF will be replaced by CRLF the next time Git touches it
+HEAD is now at 64edc1a init
+✔ createPen: an existing branch name, and an existing directory, both get out of the way (2313.064ms)
+✔ createPen: detached HEAD still branches from the current commit (2478.7948ms)
+warning: in the working copy of 'tracked.txt', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.gitmodules', LF will be replaced by CRLF the next time Git touches it
+✔ createPen: a repo with no commits fails with an actionable message, it does not hang (1339.0773ms)
+warning: in the working copy of 'tracked.txt', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'tracked.txt', LF will be replaced by CRLF the next time Git touches it
+✔ createPen: a submodule repo is refused, not half-built (1823.6354ms)
+warning: in the working copy of 'tracked.txt', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'tracked.txt', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.gitignore', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.worktreeinclude', LF will be replaced by CRLF the next time Git touches it
+✔ createPen: warns when two tracked paths differ only in case (2730.1488ms)
+warning: in the working copy of 'tracked.txt', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/ffffffffffffffffffffffffffffffffffffffff.txt', LF will be replaced by CRLF the next time Git touches it
+Preparing worktree (new branch 'nolp')
+fatal: cannot create directory at 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa': Filename too long
+✔ .worktreeinclude copies the listed gitignored paths and nothing else (2420.0651ms)
+warning: in the working copy of 'tracked.txt', LF will be replaced by CRLF the next time Git touches it
+✔ core.longpaths: worktree add fails without the flag and succeeds with it (2932.5615ms)
+warning: in the working copy of 'tracked.txt', LF will be replaced by CRLF the next time Git touches it
+✔ removePen renames the pen aside, prunes, then deletes in the background (2312.7568ms)
+warning: in the working copy of 'tracked.txt', LF will be replaced by CRLF the next time Git touches it
+✔ removePen works while a live process holds the pen as its CWD (8908.7073ms)
+warning: in the working copy of 'tracked.txt', LF will be replaced by CRLF the next time Git touches it
+✔ removePen: stopWatchers runs first, and a throwing watcher cannot strand the pen (2372.6678ms)
+warning: in the working copy of 'tracked.txt', LF will be replaced by CRLF the next time Git touches it
+✔ sweep finds a stranded directory, reports it, and deletes nothing (5814.7912ms)
+warning: in the working copy of 'tracked.txt', LF will be replaced by CRLF the next time Git touches it
+✔ concurrent createPen calls on one repo do not corrupt .git (6333.7309ms)
+✖ gate: 20 create/remove cycles with a live CWD holder leave nothing stranded (154208.2023ms)
+ℹ tests 17
+ℹ suites 0
+ℹ pass 16
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 203699.8592
+
+✖ failing tests:
+
+test at test\git.test.mjs:378:1
+✖ gate: 20 create/remove cycles with a live CWD holder leave nothing stranded (154208.2023ms)
+  Error: ENOENT: no such file or directory, scandir 'C:\Users\OshanHamal\AppData\Local\Temp\penrepo-3974e2c6\.git\worktrees'
+      at readdirSync (node:fs:1630:26)
+      at TestContext.<anonymous> (file:///C:/Users/OshanHamal/Documents/explore/research/test/git.test.mjs:404:16)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    errno: -4058,
+    code: 'ENOENT',
+    syscall: 'scandir',
+    path: 'C:\\Users\\OshanHamal\\AppData\\Local\\Temp\\penrepo-3974e2c6\\.git\\worktrees'
+  }

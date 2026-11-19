@@ -192,3 +192,144 @@ test('reading the inbox from a hostile origin is refused', async () => {
   const res = await fetch(`${BASE}/api/inbox`, { headers: { origin: 'https://evil.example' } });
   assert.equal(res.status, 403);
 });
+
+// --- pens (git worktrees) ---------------------------------------------
+// Covers the wiring only: git.mjs has its own suite for the twelve rules.
+
+import { mkdtemp, writeFile, rm } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join as pjoin } from 'node:path';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
+const run = promisify(execFile);
+
+let testRepo = null;
+
+async function makeRepo() {
+  const dir = await mkdtemp(pjoin(tmpdir(), 'cult-wire-'));
+  await run('git', ['-c', 'init.defaultBranch=main', 'init', dir]);
+  await writeFile(pjoin(dir, 'README.md'), '# fixture\n');
+  await run('git', ['-C', dir, 'add', '.']);
+  await run('git', ['-C', dir, '-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-m', 'init']);
+  return dir;
+}
+
+// Retries matter: a git child or a pty that is on its way out can still hold
+// the repo, and Windows refuses to delete a directory anything has open. A
+// swallowed failure here is how %TEMP% fills up with cult-* repos.
+after(async () => {
+  if (testRepo) await rm(testRepo, { recursive: true, force: true, maxRetries: 20, retryDelay: 250 }).catch(() => {});
+});
+
+test('a non-repo path is refused as the flock ground', async () => {
+  const { status, body } = await api('POST', '/api/repo', { path: tmpdir() });
+  assert.equal(status, 400);
+  assert.match(body.error, /not a git repository/);
+});
+
+test('choosing a repo, then raising a lamb, gives it its own pen', async () => {
+  testRepo = await makeRepo();
+  assert.equal((await api('POST', '/api/repo', { path: testRepo })).status, 200);
+  assert.equal((await api('GET', '/api/repo')).body.repo, testRepo);
+
+  const { status, body } = await api('POST', '/api/panes', {});
+  assert.equal(status, 201, `raise failed: ${JSON.stringify(body)}`);
+  assert.ok(body.pen?.path, 'lamb got no pen');
+  assert.match(body.pen.branch, /^cult\//);
+  assert.ok(existsSync(body.pen.path), 'pen directory does not exist');
+  assert.equal(body.cwd, body.pen.path, 'shell did not start inside the pen');
+  assert.ok(!body.title.includes('cult/'), 'branch prefix leaked into the display title');
+
+  // culling must take the pen with it
+  await wait(1500);
+  assert.equal((await api('DELETE', `/api/panes/${body.id}`)).status, 200);
+  const gone = await until(() => !existsSync(body.pen.path), 10000);
+  assert.ok(gone, `pen survived the cull: ${body.pen.path}`);
+});
+
+test('two lambs get different pens', async () => {
+  const a = (await api('POST', '/api/panes', {})).body;
+  const b = (await api('POST', '/api/panes', {})).body;
+  assert.notEqual(a.pen.path, b.pen.path);
+  assert.notEqual(a.pen.branch, b.pen.branch);
+  await wait(1500);
+  await api('DELETE', `/api/panes/${a.id}`);
+  await api('DELETE', `/api/panes/${b.id}`);
+});
+
+// --- abandoned pens ----------------------------------------------------
+// Pens survive a restart. Without this bucket the surviving work is invisible:
+// it is still a *registered* worktree, so sweep() correctly ignores it.
+
+test('a pen whose lamb is gone shows up as abandoned, and can be tended', async () => {
+  assert.equal((await api('POST', '/api/repo', { path: testRepo })).status, 200);
+
+  const first = (await api('POST', '/api/panes', {})).body;
+  await wait(1500);
+  const penPath = first.pen.path;
+  const branch = first.pen.branch;
+
+  // simulate the restart case: the lamb dies, the pen stays on disk
+  registry.close(first.id);
+  await wait(300);
+
+  const { body: inboxBody } = await api('GET', '/api/inbox');
+  const found = inboxBody.abandoned.find(p => p.path === penPath);
+  assert.ok(found, `pen ${penPath} was not reported as abandoned`);
+  assert.equal(found.branch, branch);
+  assert.ok(existsSync(penPath), 'pen should still be on disk');
+
+  // tending puts a lamb back in WITHOUT making a new worktree
+  const { status, body: tended } = await api('POST', '/api/panes', { penPath });
+  assert.equal(status, 201, `tend failed: ${JSON.stringify(tended)}`);
+  assert.equal(tended.cwd, penPath, 'tended lamb did not start in the pen');
+  assert.equal(tended.pen.branch, branch, 'tending changed the branch');
+
+  const after = (await api('GET', '/api/inbox')).body;
+  assert.ok(!after.abandoned.some(p => p.path === penPath), 'still listed as abandoned after tending');
+
+  await wait(1200);
+  await api('DELETE', `/api/panes/${tended.id}`);
+});
+
+// The case a user actually hits: nobody closed anything, the agent's own shell
+// ended. Nothing but the exit event can make the pen visible again.
+test('a pen whose shell exits by itself becomes abandoned with no api call', async () => {
+  assert.equal((await api('POST', '/api/repo', { path: testRepo })).status, 200);
+  const lamb = (await api('POST', '/api/panes', {})).body;
+  const penPath = lamb.pen.path;
+  try {
+    await wait(1800);
+    registry.get(lamb.id).write('exit 0\r');
+    assert.ok(await until(() => registry.get(lamb.id)?.exit != null), 'the shell never exited');
+
+    const found = await until(async () =>
+      (await api('GET', '/api/inbox')).body.abandoned.some(p => p.path === penPath));
+    assert.ok(found, `pen ${penPath} was not reported as abandoned after its shell exited`);
+  } finally {
+    await api('DELETE', `/api/panes/${lamb.id}`).catch(() => {});
+    await api('DELETE', '/api/pens', { path: penPath }).catch(() => {});
+  }
+});
+
+test('tending a pen that is not abandoned is refused', async () => {
+  const { status, body } = await api('POST', '/api/panes', { penPath: 'C:\wt\does-not-exist' });
+  assert.equal(status, 400);
+  assert.match(body.error, /no abandoned pen/);
+});
+
+test('culling an abandoned pen removes it from disk', async () => {
+  const lamb = (await api('POST', '/api/panes', {})).body;
+  await wait(1500);
+  const penPath = lamb.pen.path;
+  registry.close(lamb.id);
+  await wait(300);
+  assert.ok((await api('GET', '/api/inbox')).body.abandoned.some(p => p.path === penPath));
+
+  assert.equal((await api('DELETE', '/api/pens', { path: penPath })).status, 200);
+  assert.ok(await until(() => !existsSync(penPath), 10000), 'pen survived the cull');
+  assert.ok(!(await api('GET', '/api/inbox')).body.abandoned.some(p => p.path === penPath));
+
+  assert.equal((await api('DELETE', '/api/pens', { path: penPath })).status, 404);
+});

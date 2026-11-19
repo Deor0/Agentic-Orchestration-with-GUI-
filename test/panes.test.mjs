@@ -49,20 +49,26 @@ test('describe() reports an agent status reported over OSC 7501', async () => {
   });
 });
 
-test('watchers fire when the fleet changes', async () => {
+test('watchers fire when the fleet changes, and say why', async () => {
   await withRegistry(async reg => {
-    let fired = 0;
-    reg.watch(() => fired++);
+    const reasons = [];
+    reg.watch(r => reasons.push(r));
 
     reg.create();
-    assert.ok(fired >= 1, 'create did not notify watchers');
+    assert.ok(reasons.length >= 1, 'create did not notify watchers');
+    assert.deepEqual(reasons, ['roster'], 'adding a pane is a roster change');
 
-    const before = fired;
+    const before = reasons.length;
     await wait(1800);
     const esc = '$([char]27)';
     reg.describe(); // no-op read
     [...reg.panes.values()][0].write(`[Console]::Write("${esc}]7501;state=working${esc}\\")\r`);
-    assert.ok(await until(() => fired > before), 'status change did not notify watchers');
+    assert.ok(await until(() => reasons.length > before), 'status change did not notify watchers');
+
+    // The server hangs a `git worktree list` off every non-status reason, so a
+    // chatty agent must never be able to mint one.
+    assert.ok(reasons.slice(before).every(r => r === 'status'),
+      `a status report raised a non-status reason: ${reasons.slice(before)}`);
   });
 });
 

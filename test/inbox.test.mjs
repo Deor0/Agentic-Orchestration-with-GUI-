@@ -36,7 +36,7 @@ test('each reported status lands in its bucket', () => {
     ['blocked:auth', 'needsYou'],
     ['error', 'failed'],
     ['working', 'working'],
-    ['done', 'done'],
+    ['done', 'idle'],   // turn finished, lamb still alive and waiting
     ['idle', 'idle'],
   ]) {
     const { buckets } = summarize([pane('a', { status })], NOW);
@@ -72,7 +72,8 @@ test('ties in waitingMs keep input order', () => {
 test('order follows bucket priority: needsYou, failed, working, done, idle', () => {
   const { order } = summarize([
     pane('i', { status: 'idle' }),
-    pane('d', { status: 'done' }),
+    // only a clean exit reaches the done bucket - a reported `done` is idle
+    pane('d', { exit: { exitCode: 0 } }),
     pane('w', { status: 'working' }),
     pane('f', { status: 'error' }),
     pane('n', { status: 'blocked', statusAt: NOW - MIN }),
@@ -175,6 +176,7 @@ test('rows carry what a row needs to render', () => {
     title: 'claude — p1',
     bucket: 'needsYou',
     status: 'blocked:permission',
+    detail: null,
     exitCode: null,
     confidence: 'reported',
     stale: false,
@@ -212,4 +214,31 @@ test('summarize does not mutate its input', () => {
   const before = JSON.stringify(panes);
   summarize(panes, NOW);
   assert.equal(JSON.stringify(panes), before);
+});
+
+// Regressions from the first hand-driven run (2026-11-19).
+
+test('a reported done is idle, not done: the lamb is alive and awaiting you', () => {
+  const { buckets } = summarize([pane('p', { status: 'done' })], NOW);
+  assert.deepEqual(ids(buckets.idle), ['p'], 'a finished turn must not read as a finished lamb');
+  assert.equal(buckets.done.length, 0);
+});
+
+test('an exited pane drops its stale status string', () => {
+  // it had reported blocked, then the shell died
+  const [r] = summarize([
+    pane('p', { status: 'blocked:permission', statusAt: NOW - MIN, exit: { exitCode: 3 } }),
+  ], NOW).order;
+  assert.equal(r.bucket, 'failed');
+  assert.equal(r.exitCode, 3);
+  assert.equal(r.status, null, 'a dead pane still read as blocked');
+  assert.equal(r.detail, null);
+});
+
+test('detail survives onto the row so the UI can show what was asked', () => {
+  const detail = { msg: 'trust this folder', kind: 'permission', app: 'claude-code' };
+  const [r] = summarize([
+    pane('p', { status: 'blocked:permission', statusAt: NOW, detail }),
+  ], NOW).order;
+  assert.deepEqual(r.detail, detail, 'the request text never reached the row');
 });
